@@ -1,5 +1,7 @@
 # ui-review-loop
 
+[![skills.sh](https://skills.sh/b/amElnagdy/ui-review-loop)](https://skills.sh/amElnagdy/ui-review-loop)
+
 Verify UI work with recorded evidence instead of screenshots. An agent records a browser-testing round — video, a DOM-event timeline, and a sanitized network capture — and the operator reviews the round on a local site, watching the video and leaving timestamped comments that the agent addresses in the next round. The same recorder also powers coverage audits that exercise 100% of an inventoried UI. Everything runs as a zero-dependency Node CLI; the full workflow is documented in `SKILL.md`.
 
 ## What gets recorded
@@ -27,11 +29,19 @@ What survives: the request method, URL shape (host, non-sensitive path and query
 
 ## Install
 
+With the [Skills CLI](https://github.com/vercel-labs/skills) (any agent it supports):
+
 ```bash
-git clone <repo> ~/.agents/skills/ui-review-loop
+npx skills add amElnagdy/ui-review-loop
 ```
 
-Then point your agent at `SKILL.md` in that directory — it is the entry point an agent reads to use the tool.
+Or manually:
+
+```bash
+git clone https://github.com/amElnagdy/ui-review-loop ~/.agents/skills/ui-review-loop
+```
+
+Either way, `SKILL.md` in the installed directory is the entry point an agent reads to use the tool.
 
 ## Prerequisites
 
