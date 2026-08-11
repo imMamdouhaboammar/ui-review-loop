@@ -76,6 +76,19 @@ check("missing agent-browser is a hard failure without redundant capability prob
   assert.equal(calls.filter((c) => c.bin === "agent-browser").length, 1);
 });
 
+check("timed out agent-browser probe is not mislabeled as missing", () => {
+  const report = runDoctor({
+    nodeVersion: "22.18.0",
+    exec: ({ bin }) => bin === "agent-browser"
+      ? { status: null, stdout: "", stderr: "", errorCode: "ETIMEDOUT" }
+      : result(null),
+  });
+  const agentBrowser = report.checks.find((c) => c.id === "agent-browser");
+  assert.equal(agentBrowser.status, "fail");
+  assert.doesNotMatch(agentBrowser.message, /not found/i);
+  assert.match(agentBrowser.message, /timed out|probe failed/i);
+});
+
 check("missing recording capability fails even when version is readable", () => {
   const report = runDoctor({ nodeVersion: "22.18.0", exec: fakeExec({
     ...healthyAgentBrowser,
