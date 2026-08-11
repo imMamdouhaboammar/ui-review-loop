@@ -54,6 +54,22 @@ Either way, `SKILL.md` in the installed directory is the entry point an agent re
 
   `start` refuses an older CLI by name and warns (but proceeds) on a newer one. Only the round workflow needs agent-browser; reviewing rounds needs nothing but a browser.
 
+### Preflight with doctor
+
+Use the read-only doctor when setup is new, a dependency changed, or a recording preflight fails:
+
+```bash
+node ~/.agents/skills/ui-review-loop/scripts/doctor.mjs
+node ~/.agents/skills/ui-review-loop/scripts/doctor.mjs --json
+node ~/.agents/skills/ui-review-loop/scripts/doctor.mjs --backend browser-control
+```
+
+The default check verifies Node, the `agent-browser` binary, the recording command family, HAR/network capture, and optional `ffmpeg`. The browser-control form checks that backend instead and requires `ffmpeg`, because CDP video recording depends on it.
+
+Doctor is intentionally read-only. It may run dependency version/help/doctor commands, but it does not create `.agent-review/`, start a browser session, or begin a recording. Exit `0` means no hard failure (warnings may still be present), exit `1` means at least one required capability is missing, and exit `2` means the doctor invocation itself is invalid.
+
+Capability checks complement the supported-version guidance above rather than replacing it. A newer `agent-browser` can report the capabilities ui-review-loop needs while `start` still warns that the version is newer than the currently validated line.
+
 ## Quickstart
 
 From the project under test:
@@ -83,10 +99,11 @@ The review server is per-project, binds to `127.0.0.1` on a random port behind a
 ## Testing
 
 ```bash
-npm test        # node test/self-test.mjs — the 416-check suite
+npm run test:doctor  # focused, cross-platform diagnostics contract
+npm test             # doctor tests + the existing 416-check regression suite
 ```
 
-The suite builds fixture projects and round packages, drives the runner CLI end to end (with a PATH-shim fake standing in for the browser CLIs), and asserts the read/write contract of the review server.
+The self-test builds fixture projects and round packages, drives the runner CLI end to end (with PATH-shim fakes standing in for browser CLIs), and asserts the read/write contract of the review server. Its current shim and filesystem-permission fixtures are POSIX-oriented, so CI runs the complete suite on Ubuntu and macOS while the focused doctor contract also runs on Windows. Making the entire legacy self-test portable is intentionally separate from the diagnostics change.
 
 `test/mutate.mjs` is the mutation harness: for each entry it breaks one behaviour in the runner, recorder, or server, runs the suite, and requires that the named checks fail — a check that stays green while its subject is broken is a false guarantee. It is slow by design (it runs the suite once per mutation):
 
