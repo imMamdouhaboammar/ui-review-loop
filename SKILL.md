@@ -29,6 +29,33 @@ cannot read. Only the round workflow needs it — coverage audits can drive Play
 A `browser-control` backend exists for driving the operator's real logged-in browser; use it
 only on explicit request (see "Recording backend" below).
 
+## Environment preflight
+
+When this is a new installation, a browser dependency was upgraded, or `start` reports a
+preflight/dependency problem, run the read-only doctor before changing project code:
+
+```bash
+node "$AR_SKILL_DIR/scripts/doctor.mjs"
+node "$AR_SKILL_DIR/scripts/doctor.mjs" --json
+```
+
+The default doctor checks Node, `agent-browser`, the recording command family, HAR/network
+capture, and optional `ffmpeg`. For an explicitly requested browser-control round, use:
+
+```bash
+node "$AR_SKILL_DIR/scripts/doctor.mjs" --backend browser-control
+```
+
+That form checks browser-control instead and requires `ffmpeg`. Doctor is diagnostic only: it
+must not create `.agent-review/`, start a browser session, or begin a recording. Exit `0` means
+there is no hard capability failure (read WARN lines too), exit `1` means a required capability
+is missing, and exit `2` means the doctor command itself was malformed.
+
+Treat doctor as a capability preflight, not as permission to ignore version guidance. A newer
+`agent-browser` may expose the required commands while `round.mjs start` still warns that the
+version is newer than the currently validated line. The runner's fail-closed checks remain the
+authority once a round starts.
+
 All artifacts live in the CURRENT project's `.agent-review/` directory. Never record a round
 outside a project the operator is working in, and never commit `.agent-review/` (the runner
 gitignores it automatically).
