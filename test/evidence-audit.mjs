@@ -45,7 +45,9 @@ function buildRound(root, id = ROUND1, { backend = "agent-browser", comment = fa
     versions: browserControl
       ? { skill: "1.0.0", recorder: "1", node: process.versions.node, backend: "browser-control", cli: "0.4.1", relayBuild: "b1", extensionVersion: "0.4.1", recordingMode: "cdp", ffmpeg: true }
       : { skill: "1.0.0", recorder: "1", agentBrowser: "0.32.1", node: process.versions.node },
-    sync: { confidence: browserControl ? "low" : "medium", method: browserControl ? "unavailable" : "calibrated-wall", anchors: [] },
+    sync: browserControl
+      ? { confidence: "low", method: "unavailable", clockSkewMs: null, calibration: null, anchors: [] }
+      : { confidence: "medium", method: "calibrated-wall", clockSkewMs: 0, calibration: null, anchors: [] },
     completeness: { video: "complete", dom: "complete", network: browserControl ? "missing" : "complete", gaps: [] },
   });
   writeJson(path.join(rd, "dom.json"), { schemaVersion: 1, roundId: id, segments: [] });
@@ -86,8 +88,7 @@ check("valid v1 package passes", () => withProject((root) => {
 
 check("valid browser-control v2 package passes without HAR", () => withProject((root) => {
   buildRound(root, ROUND1, { backend: "browser-control" });
-  const report = auditLibrary({ projectRoot: root });
-  assert.equal(report.status, "pass");
+  assert.equal(auditLibrary({ projectRoot: root }).status, "pass");
 }));
 
 check("declared missing video permits absence but warns on contradictory artifact", () => withProject((root) => {
@@ -104,6 +105,46 @@ check("declared missing video permits absence but warns on contradictory artifac
   assert.match(JSON.stringify(report), /video.*missing|missing.*video/i);
 }));
 
+check("undeclared missing video fails", () => withProject((root) => {
+  const rd = buildRound(root);
+  fs.rmSync(path.join(rd, "video.webm"));
+  const report = auditLibrary({ projectRoot: root });
+  assert.equal(report.status, "fail");
+  assert.match(JSON.stringify(report), /video\.webm/);
+}));
+
+check("meta timestamps and summary bounds are enforced", () => withProject((root) => {
+  const rd = buildRound(root);
+  const meta = JSON.parse(fs.readFileSync(path.join(rd, "meta.json"), "utf8"));
+  meta.endedAt = "2026-07-17T11:59:00.000Z";
+  writeJson(path.join(rd, "meta.json"), meta);
+  let report = auditLibrary({ projectRoot: root });
+  assert.equal(report.status, "fail");
+  meta.endedAt = "2026-07-17T12:01:00.000Z";
+  meta.summary = "line one\nline two";
+  writeJson(path.join(rd, "meta.json"), meta);
+  report = auditLibrary({ projectRoot: root });
+  assert.equal(report.status, "fail");
+}));
+
+check("completeness gaps must be an array", () => withProject((root) => {
+  const rd = buildRound(root);
+  const meta = JSON.parse(fs.readFileSync(path.join(rd, "meta.json"), "utf8"));
+  meta.completeness.gaps = {};
+  writeJson(path.join(rd, "meta.json"), meta);
+  const report = auditLibrary({ projectRoot: root });
+  assert.equal(report.status, "fail");
+  assert.match(JSON.stringify(report), /gaps/);
+}));
+
+check("dom segments must be an array", () => withProject((root) => {
+  const rd = buildRound(root);
+  writeJson(path.join(rd, "dom.json"), { schemaVersion: 1, roundId: ROUND1, segments: {} });
+  const report = auditLibrary({ projectRoot: root });
+  assert.equal(report.status, "fail");
+  assert.match(JSON.stringify(report), /segments/);
+}));
+
 check("symlinked evidence root is refused", () => {
   if (process.platform === "win32") return;
   withProject((root) => {
@@ -117,15 +158,18 @@ check("symlinked evidence root is refused", () => {
   });
 });
 
-check("missing or malformed required JSON fails", () => withProject((root) => {
+check("missing required JSON fails", () => withProject((root) => {
   const rd = buildRound(root);
   fs.rmSync(path.join(rd, "dom.json"));
-  let report = auditLibrary({ projectRoot: root });
+  const report = auditLibrary({ projectRoot: root });
   assert.equal(report.status, "fail");
   assert.match(JSON.stringify(report), /dom\.json/);
-  writeJson(path.join(rd, "dom.json"), { schemaVersion: 1, roundId: ROUND1, segments: [] });
+}));
+
+check("malformed required JSON fails", () => withProject((root) => {
+  const rd = buildRound(root);
   fs.writeFileSync(path.join(rd, "comments.json"), "{broken");
-  report = auditLibrary({ projectRoot: root });
+  const report = auditLibrary({ projectRoot: root });
   assert.equal(report.status, "fail");
   assert.match(JSON.stringify(report), /comments\.json/);
 }));
@@ -138,14 +182,18 @@ check("cross-file round id and schema mismatches fail", () => withProject((root)
   assert.match(JSON.stringify(report), /roundId|schema/i);
 }));
 
-check("v1 network completeness requires a valid HAR", () => withProject((root) => {
+check("v1 network completeness requires HAR presence", () => withProject((root) => {
   const rd = buildRound(root);
   fs.rmSync(path.join(rd, "network.har"));
-  let report = auditLibrary({ projectRoot: root });
+  const report = auditLibrary({ projectRoot: root });
   assert.equal(report.status, "fail");
   assert.match(JSON.stringify(report), /network\.har/);
+}));
+
+check("present v1 HAR must be valid JSON", () => withProject((root) => {
+  const rd = buildRound(root);
   fs.writeFileSync(path.join(rd, "network.har"), "not json");
-  report = auditLibrary({ projectRoot: root });
+  const report = auditLibrary({ projectRoot: root });
   assert.equal(report.status, "fail");
 }));
 
@@ -160,6 +208,16 @@ check("v2 enforces browser-control network contract", () => withProject((root) =
   writeJson(path.join(rd, "meta.json"), meta);
   report = auditLibrary({ projectRoot: root });
   assert.equal(report.status, "fail");
+}));
+
+check("v2 requires browser-control backend identity", () => withProject((root) => {
+  const rd = buildRound(root, ROUND1, { backend: "browser-control" });
+  const meta = JSON.parse(fs.readFileSync(path.join(rd, "meta.json"), "utf8"));
+  meta.versions.backend = "agent-browser";
+  writeJson(path.join(rd, "meta.json"), meta);
+  const report = auditLibrary({ projectRoot: root });
+  assert.equal(report.status, "fail");
+  assert.match(JSON.stringify(report), /browser-control backend/);
 }));
 
 check("comments require canonical ids and JPEG sidecars", () => withProject((root) => {
@@ -203,13 +261,20 @@ check("raw and transient artifacts fail finalized packages", () => withProject((
   }
 }));
 
-check("unknown files and orphan JPEGs warn without hiding valid evidence", () => withProject((root) => {
+check("unknown top-level files warn", () => withProject((root) => {
   const rd = buildRound(root);
   fs.writeFileSync(path.join(rd, "future-artifact.bin"), "future");
+  const report = auditLibrary({ projectRoot: root });
+  assert.equal(report.status, "warn");
+  assert.match(JSON.stringify(report), /future-artifact\.bin/);
+}));
+
+check("orphan JPEGs warn", () => withProject((root) => {
+  const rd = buildRound(root);
   fs.writeFileSync(path.join(rd, "comment-images", "c-00000000-0000-0000-0000-000000000000.jpg"), Buffer.from([0xff, 0xd8, 0xff, 0xd9]));
   const report = auditLibrary({ projectRoot: root });
   assert.equal(report.status, "warn");
-  assert.equal(report.rounds[0].status, "warn");
+  assert.match(JSON.stringify(report), /orphan comment image/);
 }));
 
 check("round filter audits only the requested package", () => withProject((root) => {
