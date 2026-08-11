@@ -139,29 +139,34 @@ check("browser-control diagnostics require its CLI and ffmpeg", () => {
 });
 
 check("browser-control mirrors relay and extension fail-closed gates", () => {
-  for (const status of [
-    { relay: { running: false, stale: false }, extension: { connected: true } },
-    { relay: { running: true, stale: true }, extension: { connected: true } },
-    { relay: { running: true, stale: false }, extension: { connected: false } },
-  ]) {
+  const cases = [
+    { exit: 0, payload: { relay: { running: false, stale: false }, extension: { connected: true } }, message: /relay is not running/ },
+    { exit: 1, payload: { relay: { running: true, stale: true }, extension: { connected: true } }, message: /relay build does not match/ },
+    { exit: 0, payload: { relay: { running: true, stale: false }, extension: { connected: false } }, message: /extension is not connected/ },
+  ];
+  for (const item of cases) {
     const report = runDoctor({ backend: "browser-control", nodeVersion: "24.5.0", exec: fakeExec({
       ...healthyBrowserControl,
-      "browser-control status --json": result(0, JSON.stringify(status)),
+      "browser-control status --json": result(item.exit, JSON.stringify(item.payload)),
       "ffmpeg -version": result(0, "ffmpeg version 7.1\n"),
     }) });
+    const status = report.checks.find((c) => c.id === "browser-control-status");
     assert.equal(report.status, "fail");
-    assert.equal(report.checks.find((c) => c.id === "browser-control-status").status, "fail");
+    assert.equal(status.status, "fail");
+    assert.match(status.message, item.message);
   }
 });
 
 check("browser-control refuses a confirmed extension version mismatch", () => {
   const report = runDoctor({ backend: "browser-control", nodeVersion: "24.5.0", exec: fakeExec({
     ...healthyBrowserControl,
-    "browser-control doctor --json": result(0, JSON.stringify({ extension: { versionMatches: false } })),
+    "browser-control doctor --json": result(1, JSON.stringify({ extension: { versionMatches: false } })),
     "ffmpeg -version": result(0, "ffmpeg version 7.1\n"),
   }) });
+  const doctor = report.checks.find((c) => c.id === "browser-control-doctor");
   assert.equal(report.status, "fail");
-  assert.equal(report.checks.find((c) => c.id === "browser-control-doctor").status, "fail");
+  assert.equal(doctor.status, "fail");
+  assert.match(doctor.message, /does not match/);
 });
 
 check("browser-control undetermined extension version warns without leaking raw output", () => {
