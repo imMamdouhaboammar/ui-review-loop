@@ -80,6 +80,13 @@ const MUTATIONS = [
     breaks: ["browser-control diagnostics require its CLI and ffmpeg"],
   },
   {
+    label: "doctor-browser-control-status-nonzero-json-discarded",
+    file: "diagnostics",
+    from: "  const status = parseJsonProbe(statusProbe, { allowNonZero: true });",
+    to: "  const status = parseJsonProbe(statusProbe);",
+    breaks: ["browser-control mirrors relay and extension fail-closed gates"],
+  },
+  {
     label: "doctor-browser-control-relay-down-accepted",
     file: "diagnostics",
     from: "  if (status.relay.running !== true) {",
@@ -106,6 +113,13 @@ const MUTATIONS = [
     from: "  const doctorProbe = exec({ bin: \"browser-control\", args: [\"doctor\", \"--json\"], timeoutMs: 10000 });",
     to: "  const doctorProbe = exec({ bin: \"browser-control\", args: [\"doctor\"], timeoutMs: 10000 });",
     breaks: ["browser-control diagnostics require its CLI and ffmpeg"],
+  },
+  {
+    label: "doctor-browser-control-doctor-nonzero-json-discarded",
+    file: "diagnostics",
+    from: "  const doctor = parseJsonProbe(doctorProbe, { allowNonZero: true });",
+    to: "  const doctor = parseJsonProbe(doctorProbe);",
+    breaks: ["browser-control refuses a confirmed extension version mismatch"],
   },
   {
     label: "doctor-browser-control-version-mismatch-accepted",
