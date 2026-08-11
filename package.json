@@ -10,6 +10,7 @@
   },
   "scripts": {
     "doctor": "node scripts/doctor.mjs",
+    "test:doctor": "node test/doctor.mjs",
     "test": "node test/doctor.mjs && node test/self-test.mjs"
   }
 }
