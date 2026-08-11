@@ -43,6 +43,18 @@ const healthyAgentBrowser = {
   "agent-browser network har --help": result(0, "HAR capture\n"),
 };
 
+const healthyBrowserControl = {
+  "browser-control --version": result(0, "0.4.1\n"),
+  "browser-control status --json": result(0, JSON.stringify({
+    relay: { running: true, stale: false },
+    extension: { connected: true },
+  })),
+  "browser-control doctor --json": result(0, JSON.stringify({
+    status: "pass",
+    extension: { versionMatches: true },
+  })),
+};
+
 check("aggregateStatus returns the highest severity", () => {
   assert.equal(aggregateStatus([{ status: "pass" }, { status: "warn" }]), "warn");
   assert.equal(aggregateStatus([{ status: "warn" }, { status: "fail" }]), "fail");
@@ -117,21 +129,49 @@ check("ffmpeg availability removes the optional warning", () => {
 });
 
 check("browser-control diagnostics require its CLI and ffmpeg", () => {
-  const report = runDoctor({ backend: "browser-control", nodeVersion: "22.18.0", exec: fakeExec({
-    "browser-control --version": result(0, "0.4.1\n"),
-    "browser-control doctor --json": result(0, JSON.stringify({ status: "pass", extension: { connected: true, versionMatches: true } })),
-  }) });
+  const report = runDoctor({ backend: "browser-control", nodeVersion: "22.18.0", exec: fakeExec(healthyBrowserControl) });
   assert.equal(report.status, "fail");
   assert.equal(report.checks.find((c) => c.id === "browser-control").status, "pass");
+  assert.equal(report.checks.find((c) => c.id === "browser-control-status").status, "pass");
   assert.equal(report.checks.find((c) => c.id === "browser-control-doctor").status, "pass");
   assert.equal(report.checks.find((c) => c.id === "ffmpeg").status, "fail");
   assert.equal(report.checks.some((c) => c.id === "agent-browser"), false);
 });
 
-check("browser-control doctor warning is preserved without leaking raw output", () => {
+check("browser-control mirrors relay and extension fail-closed gates", () => {
+  for (const status of [
+    { relay: { running: false, stale: false }, extension: { connected: true } },
+    { relay: { running: true, stale: true }, extension: { connected: true } },
+    { relay: { running: true, stale: false }, extension: { connected: false } },
+  ]) {
+    const report = runDoctor({ backend: "browser-control", nodeVersion: "24.5.0", exec: fakeExec({
+      ...healthyBrowserControl,
+      "browser-control status --json": result(0, JSON.stringify(status)),
+      "ffmpeg -version": result(0, "ffmpeg version 7.1\n"),
+    }) });
+    assert.equal(report.status, "fail");
+    assert.equal(report.checks.find((c) => c.id === "browser-control-status").status, "fail");
+  }
+});
+
+check("browser-control refuses a confirmed extension version mismatch", () => {
   const report = runDoctor({ backend: "browser-control", nodeVersion: "24.5.0", exec: fakeExec({
-    "browser-control --version": result(0, "0.4.1\n"),
-    "browser-control doctor --json": result(0, JSON.stringify({ status: "warn", extension: { connected: true, versionMatches: null }, secret: "do-not-copy" })),
+    ...healthyBrowserControl,
+    "browser-control doctor --json": result(0, JSON.stringify({ extension: { versionMatches: false } })),
+    "ffmpeg -version": result(0, "ffmpeg version 7.1\n"),
+  }) });
+  assert.equal(report.status, "fail");
+  assert.equal(report.checks.find((c) => c.id === "browser-control-doctor").status, "fail");
+});
+
+check("browser-control undetermined extension version warns without leaking raw output", () => {
+  const report = runDoctor({ backend: "browser-control", nodeVersion: "24.5.0", exec: fakeExec({
+    ...healthyBrowserControl,
+    "browser-control doctor --json": result(0, JSON.stringify({
+      status: "pass",
+      extension: { versionMatches: null },
+      secret: "do-not-copy",
+    })),
     "ffmpeg -version": result(0, "ffmpeg version 7.1\n"),
   }) });
   const doctor = report.checks.find((c) => c.id === "browser-control-doctor");
