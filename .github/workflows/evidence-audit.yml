@@ -1,0 +1,26 @@
+name: evidence-audit
+
+on:
+  pull_request:
+    paths:
+      - "lib/evidence-audit.mjs"
+      - "scripts/evidence.mjs"
+      - "test/evidence-audit.mjs"
+      - "test/mutate-evidence-audit.mjs"
+      - ".github/workflows/evidence-audit.yml"
+
+jobs:
+  focused:
+    name: focused (${{ matrix.os }}, node ${{ matrix.node-version }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        node-version: [22, 24]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ matrix.node-version }}
+      - run: node test/evidence-audit.mjs
