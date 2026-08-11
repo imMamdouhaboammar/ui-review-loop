@@ -1,0 +1,54 @@
+name: evidence-audit
+
+on:
+  push:
+    paths:
+      - "lib/evidence-audit.mjs"
+      - "scripts/evidence.mjs"
+      - "test/evidence-audit*.mjs"
+      - "test/mutate-evidence-audit*.mjs"
+      - "references/evidence-audit.md"
+      - ".github/workflows/evidence-audit.yml"
+  pull_request:
+    paths:
+      - "lib/evidence-audit.mjs"
+      - "scripts/evidence.mjs"
+      - "test/evidence-audit*.mjs"
+      - "test/mutate-evidence-audit*.mjs"
+      - "references/evidence-audit.md"
+      - ".github/workflows/evidence-audit.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  focused:
+    name: focused (${{ matrix.os }}, node ${{ matrix.node-version }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        node-version: [22, 24]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ matrix.node-version }}
+      - run: node test/evidence-audit.mjs
+      - run: node test/evidence-audit-security.mjs
+
+  mutation:
+    name: mutation proof
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - run: node test/mutate-evidence-audit.mjs
+      - run: node test/mutate-evidence-audit-security.mjs
