@@ -1,0 +1,25 @@
+name: doctor-command
+
+on:
+  pull_request:
+    paths:
+      - "scripts/doctor.mjs"
+      - "test/doctor.mjs"
+      - "test/doctor-windows.mjs"
+      - "test/mutate-doctor-command.mjs"
+      - ".github/workflows/doctor-command.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  mutation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - run: node test/mutate-doctor-command.mjs
