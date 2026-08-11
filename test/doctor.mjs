@@ -119,7 +119,7 @@ check("ffmpeg availability removes the optional warning", () => {
 check("browser-control diagnostics require its CLI and ffmpeg", () => {
   const report = runDoctor({ backend: "browser-control", nodeVersion: "22.18.0", exec: fakeExec({
     "browser-control --version": result(0, "0.4.1\n"),
-    "browser-control doctor": result(0, JSON.stringify({ status: "pass", extension: { connected: true, versionMatches: true } })),
+    "browser-control doctor --json": result(0, JSON.stringify({ status: "pass", extension: { connected: true, versionMatches: true } })),
   }) });
   assert.equal(report.status, "fail");
   assert.equal(report.checks.find((c) => c.id === "browser-control").status, "pass");
@@ -131,7 +131,7 @@ check("browser-control diagnostics require its CLI and ffmpeg", () => {
 check("browser-control doctor warning is preserved without leaking raw output", () => {
   const report = runDoctor({ backend: "browser-control", nodeVersion: "24.5.0", exec: fakeExec({
     "browser-control --version": result(0, "0.4.1\n"),
-    "browser-control doctor": result(0, JSON.stringify({ status: "warn", extension: { connected: true, versionMatches: null }, secret: "do-not-copy" })),
+    "browser-control doctor --json": result(0, JSON.stringify({ status: "warn", extension: { connected: true, versionMatches: null }, secret: "do-not-copy" })),
     "ffmpeg -version": result(0, "ffmpeg version 7.1\n"),
   }) });
   const doctor = report.checks.find((c) => c.id === "browser-control-doctor");
