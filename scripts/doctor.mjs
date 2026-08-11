@@ -30,9 +30,26 @@ function usage() {
   ].join("\n");
 }
 
-function getFlag(args, name) {
-  const index = args.indexOf(name);
-  return index === -1 ? null : args[index + 1];
+function parseArgs(args) {
+  let backend = "agent-browser";
+  let json = false;
+  for (let index = 0; index < args.length; index++) {
+    const arg = args[index];
+    if (arg === "--json") {
+      json = true;
+      continue;
+    }
+    if (arg === "--backend") {
+      const value = args[index + 1];
+      if (!value || value.startsWith("-")) return { error: "--backend requires agent-browser or browser-control" };
+      if (value !== "agent-browser" && value !== "browser-control") return { error: `unsupported backend ${JSON.stringify(value)}` };
+      backend = value;
+      index++;
+      continue;
+    }
+    return { error: `unexpected argument ${JSON.stringify(arg)}` };
+  }
+  return { backend, json };
 }
 
 function main(args = process.argv.slice(2), io = process) {
@@ -41,21 +58,14 @@ function main(args = process.argv.slice(2), io = process) {
     return 0;
   }
 
-  const allowed = new Set(["--json", "--backend", "agent-browser", "browser-control"]);
-  const unknown = args.find((arg) => !allowed.has(arg));
-  if (unknown) {
-    io.stderr.write(`doctor: unknown argument ${JSON.stringify(unknown)}\n${usage()}\n`);
+  const parsed = parseArgs(args);
+  if (parsed.error) {
+    io.stderr.write(`doctor: ${parsed.error}\n${usage()}\n`);
     return 2;
   }
 
-  const backend = getFlag(args, "--backend") || "agent-browser";
-  if (backend !== "agent-browser" && backend !== "browser-control") {
-    io.stderr.write(`doctor: unsupported backend ${JSON.stringify(backend)}\n${usage()}\n`);
-    return 2;
-  }
-
-  const report = runDoctor({ backend, exec: execProbe });
-  if (args.includes("--json")) io.stdout.write(JSON.stringify(report, null, 2) + "\n");
+  const report = runDoctor({ backend: parsed.backend, exec: execProbe });
+  if (parsed.json) io.stdout.write(JSON.stringify(report, null, 2) + "\n");
   else io.stdout.write(formatDoctor(report));
   return report.status === "fail" ? 1 : 0;
 }
@@ -63,4 +73,4 @@ function main(args = process.argv.slice(2), io = process) {
 const isDirectRun = process.argv[1] && fs.realpathSync(process.argv[1]) === fileURLToPath(import.meta.url);
 if (isDirectRun) process.exitCode = main();
 
-export { execProbe, main, usage };
+export { execProbe, main, parseArgs, usage };
