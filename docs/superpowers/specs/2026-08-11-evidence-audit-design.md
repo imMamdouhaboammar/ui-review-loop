@@ -34,7 +34,7 @@ Library:
 
 Per round:
 - `meta.json`, `dom.json`, `comments.json`, and `resolutions.json` are required regular non-symlink files containing valid JSON.
-- `video.webm` is required, regular, non-symlink, and non-empty.
+- `video.webm` must be a regular non-symlink, non-empty file when `completeness.video` is `complete` or `partial`. Its absence is valid when the channel is declared `missing`; a contradictory file in that state is a warning.
 - Directory name and every JSON `roundId` must agree.
 - `meta.schemaVersion` is 1 or 2; `dom/comments/resolutions.schemaVersion` is 1.
 - `meta.completeness.video|dom|network` values are `complete|partial|missing`.
@@ -68,6 +68,6 @@ Checks contain only `id`, `status`, and `message`.
 
 ## Testing
 
-Focused tests build temporary libraries and cover: empty library, symlink refusal, valid v1/v2 packages, missing/malformed required files, cross-file round-id mismatch, completeness/network consistency, invalid comments/images, invalid resolution keys, raw leftovers, warnings for unknown/orphan files, round filtering, JSON/human output, and strict CLI parsing.
+Focused tests build temporary libraries and cover: empty library, symlink refusal, valid v1/v2 packages, declared missing video evidence, missing/malformed required files, cross-file round-id mismatch, completeness/network consistency, invalid comments/images, invalid resolution keys, raw leftovers, warnings for unknown/orphan files, round filtering, JSON/human output, and strict CLI parsing.
 
 A focused mutation harness must prove the important checks can fail before the contribution is considered ready.
