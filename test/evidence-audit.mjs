@@ -67,6 +67,10 @@ function withProject(fn) {
   finally { fs.rmSync(root, { recursive: true, force: true }); }
 }
 
+function readMeta(rd) { return JSON.parse(fs.readFileSync(path.join(rd, "meta.json"), "utf8")); }
+function readComments(rd) { return JSON.parse(fs.readFileSync(path.join(rd, "comments.json"), "utf8")); }
+function writeResolutions(rd, items) { writeJson(path.join(rd, "resolutions.json"), { schemaVersion: 1, roundId: ROUND1, items }); }
+
 check("aggregateStatus returns highest severity", () => {
   assert.equal(aggregateStatus([{ status: "pass" }, { status: "warn" }]), "warn");
   assert.equal(aggregateStatus([{ status: "warn" }, { status: "fail" }]), "fail");
@@ -91,16 +95,21 @@ check("valid browser-control v2 package passes without HAR", () => withProject((
   assert.equal(auditLibrary({ projectRoot: root }).status, "pass");
 }));
 
-check("declared missing video permits absence but warns on contradictory artifact", () => withProject((root) => {
+check("declared missing video permits absence", () => withProject((root) => {
   const rd = buildRound(root, ROUND1, { backend: "browser-control" });
-  const meta = JSON.parse(fs.readFileSync(path.join(rd, "meta.json"), "utf8"));
+  const meta = readMeta(rd);
   meta.completeness.video = "missing";
   writeJson(path.join(rd, "meta.json"), meta);
   fs.rmSync(path.join(rd, "video.webm"));
-  let report = auditLibrary({ projectRoot: root });
-  assert.notEqual(report.status, "fail");
-  fs.writeFileSync(path.join(rd, "video.webm"), Buffer.alloc(16, 7));
-  report = auditLibrary({ projectRoot: root });
+  assert.notEqual(auditLibrary({ projectRoot: root }).status, "fail");
+}));
+
+check("video contradicting declared missing state warns", () => withProject((root) => {
+  const rd = buildRound(root, ROUND1, { backend: "browser-control" });
+  const meta = readMeta(rd);
+  meta.completeness.video = "missing";
+  writeJson(path.join(rd, "meta.json"), meta);
+  const report = auditLibrary({ projectRoot: root });
   assert.equal(report.status, "warn");
   assert.match(JSON.stringify(report), /video.*missing|missing.*video/i);
 }));
@@ -113,23 +122,33 @@ check("undeclared missing video fails", () => withProject((root) => {
   assert.match(JSON.stringify(report), /video\.webm/);
 }));
 
-check("meta timestamps and summary bounds are enforced", () => withProject((root) => {
+check("meta timestamps must be readable and ordered", () => withProject((root) => {
   const rd = buildRound(root);
-  const meta = JSON.parse(fs.readFileSync(path.join(rd, "meta.json"), "utf8"));
+  const meta = readMeta(rd);
   meta.endedAt = "2026-07-17T11:59:00.000Z";
   writeJson(path.join(rd, "meta.json"), meta);
-  let report = auditLibrary({ projectRoot: root });
-  assert.equal(report.status, "fail");
-  meta.endedAt = "2026-07-17T12:01:00.000Z";
+  assert.equal(auditLibrary({ projectRoot: root }).status, "fail");
+}));
+
+check("meta summary must remain a bounded single line", () => withProject((root) => {
+  const rd = buildRound(root);
+  const meta = readMeta(rd);
   meta.summary = "line one\nline two";
   writeJson(path.join(rd, "meta.json"), meta);
-  report = auditLibrary({ projectRoot: root });
-  assert.equal(report.status, "fail");
+  assert.equal(auditLibrary({ projectRoot: root }).status, "fail");
+}));
+
+check("completeness channel values must be recognized", () => withProject((root) => {
+  const rd = buildRound(root);
+  const meta = readMeta(rd);
+  meta.completeness.dom = "unknown";
+  writeJson(path.join(rd, "meta.json"), meta);
+  assert.equal(auditLibrary({ projectRoot: root }).status, "fail");
 }));
 
 check("completeness gaps must be an array", () => withProject((root) => {
   const rd = buildRound(root);
-  const meta = JSON.parse(fs.readFileSync(path.join(rd, "meta.json"), "utf8"));
+  const meta = readMeta(rd);
   meta.completeness.gaps = {};
   writeJson(path.join(rd, "meta.json"), meta);
   const report = auditLibrary({ projectRoot: root });
@@ -193,26 +212,26 @@ check("v1 network completeness requires HAR presence", () => withProject((root) 
 check("present v1 HAR must be valid JSON", () => withProject((root) => {
   const rd = buildRound(root);
   fs.writeFileSync(path.join(rd, "network.har"), "not json");
-  const report = auditLibrary({ projectRoot: root });
-  assert.equal(report.status, "fail");
+  assert.equal(auditLibrary({ projectRoot: root }).status, "fail");
 }));
 
-check("v2 enforces browser-control network contract", () => withProject((root) => {
+check("v2 must not contain network HAR", () => withProject((root) => {
   const rd = buildRound(root, ROUND1, { backend: "browser-control" });
   writeJson(path.join(rd, "network.har"), { log: { entries: [] } });
-  let report = auditLibrary({ projectRoot: root });
-  assert.equal(report.status, "fail");
-  fs.rmSync(path.join(rd, "network.har"));
-  const meta = JSON.parse(fs.readFileSync(path.join(rd, "meta.json"), "utf8"));
+  assert.equal(auditLibrary({ projectRoot: root }).status, "fail");
+}));
+
+check("v2 network completeness must be missing", () => withProject((root) => {
+  const rd = buildRound(root, ROUND1, { backend: "browser-control" });
+  const meta = readMeta(rd);
   meta.completeness.network = "complete";
   writeJson(path.join(rd, "meta.json"), meta);
-  report = auditLibrary({ projectRoot: root });
-  assert.equal(report.status, "fail");
+  assert.equal(auditLibrary({ projectRoot: root }).status, "fail");
 }));
 
 check("v2 requires browser-control backend identity", () => withProject((root) => {
   const rd = buildRound(root, ROUND1, { backend: "browser-control" });
-  const meta = JSON.parse(fs.readFileSync(path.join(rd, "meta.json"), "utf8"));
+  const meta = readMeta(rd);
   meta.versions.backend = "agent-browser";
   writeJson(path.join(rd, "meta.json"), meta);
   const report = auditLibrary({ projectRoot: root });
@@ -220,43 +239,49 @@ check("v2 requires browser-control backend identity", () => withProject((root) =
   assert.match(JSON.stringify(report), /browser-control backend/);
 }));
 
-check("comments require canonical ids and JPEG sidecars", () => withProject((root) => {
+check("missing comment JPEG sidecar fails", () => withProject((root) => {
   const rd = buildRound(root, ROUND1, { comment: true });
   fs.rmSync(path.join(rd, "comment-images", `${COMMENT}.jpg`));
-  let report = auditLibrary({ projectRoot: root });
-  assert.equal(report.status, "fail");
-  fs.writeFileSync(path.join(rd, "comment-images", `${COMMENT}.jpg`), Buffer.from("not-jpeg"));
-  report = auditLibrary({ projectRoot: root });
-  assert.equal(report.status, "fail");
-  const comments = JSON.parse(fs.readFileSync(path.join(rd, "comments.json"), "utf8"));
-  comments.comments[0].id = "bad-id";
-  writeJson(path.join(rd, "comments.json"), comments);
-  report = auditLibrary({ projectRoot: root });
-  assert.equal(report.status, "fail");
+  assert.equal(auditLibrary({ projectRoot: root }).status, "fail");
 }));
 
-check("resolution keys must belong to comments and carry valid fields", () => withProject((root) => {
+check("invalid comment JPEG sidecar fails", () => withProject((root) => {
   const rd = buildRound(root, ROUND1, { comment: true });
-  writeJson(path.join(rd, "resolutions.json"), {
-    schemaVersion: 1, roundId: ROUND1,
-    items: { "c-00000000-0000-0000-0000-000000000000": { resolvedInRoundId: ROUND2, resolvedAt: "2026-07-17T14:00:00.000Z" } },
-  });
-  let report = auditLibrary({ projectRoot: root });
-  assert.equal(report.status, "fail");
-  writeJson(path.join(rd, "resolutions.json"), {
-    schemaVersion: 1, roundId: ROUND1,
-    items: { [COMMENT]: { resolvedInRoundId: "bad", resolvedAt: "not-a-date" } },
-  });
-  report = auditLibrary({ projectRoot: root });
-  assert.equal(report.status, "fail");
+  fs.writeFileSync(path.join(rd, "comment-images", `${COMMENT}.jpg`), Buffer.from("not-jpeg"));
+  assert.equal(auditLibrary({ projectRoot: root }).status, "fail");
+}));
+
+check("noncanonical comment id fails", () => withProject((root) => {
+  const rd = buildRound(root, ROUND1, { comment: true });
+  const comments = readComments(rd);
+  comments.comments[0].id = "bad-id";
+  writeJson(path.join(rd, "comments.json"), comments);
+  assert.equal(auditLibrary({ projectRoot: root }).status, "fail");
+}));
+
+check("resolution key must belong to a comment", () => withProject((root) => {
+  const rd = buildRound(root, ROUND1, { comment: true });
+  writeResolutions(rd, { "c-00000000-0000-0000-0000-000000000000": { resolvedInRoundId: ROUND2, resolvedAt: "2026-07-17T14:00:00.000Z" } });
+  assert.equal(auditLibrary({ projectRoot: root }).status, "fail");
+}));
+
+check("resolution target round id must be canonical", () => withProject((root) => {
+  const rd = buildRound(root, ROUND1, { comment: true });
+  writeResolutions(rd, { [COMMENT]: { resolvedInRoundId: "bad", resolvedAt: "2026-07-17T14:00:00.000Z" } });
+  assert.equal(auditLibrary({ projectRoot: root }).status, "fail");
+}));
+
+check("resolution timestamp must be readable", () => withProject((root) => {
+  const rd = buildRound(root, ROUND1, { comment: true });
+  writeResolutions(rd, { [COMMENT]: { resolvedInRoundId: ROUND2, resolvedAt: "not-a-date" } });
+  assert.equal(auditLibrary({ projectRoot: root }).status, "fail");
 }));
 
 check("raw and transient artifacts fail finalized packages", () => withProject((root) => {
   const rd = buildRound(root);
   for (const name of ["network.raw.har", "video.webm.json", "frames-s-0001.jsonl"]) {
     fs.writeFileSync(path.join(rd, name), "leftover");
-    const report = auditLibrary({ projectRoot: root });
-    assert.equal(report.status, "fail");
+    assert.equal(auditLibrary({ projectRoot: root }).status, "fail");
     fs.rmSync(path.join(rd, name));
   }
 }));
@@ -283,8 +308,11 @@ check("round filter audits only the requested package", () => withProject((root)
   const report = auditLibrary({ projectRoot: root, roundId: ROUND2 });
   assert.equal(report.rounds.length, 1);
   assert.equal(report.rounds[0].roundId, ROUND2);
-  const missing = auditLibrary({ projectRoot: root, roundId: "20260717T140000Z-aaaaaa" });
-  assert.equal(missing.status, "fail");
+}));
+
+check("missing round filter fails", () => withProject((root) => {
+  buildRound(root, ROUND1);
+  assert.equal(auditLibrary({ projectRoot: root, roundId: "20260717T140000Z-aaaaaa" }).status, "fail");
 }));
 
 check("formatAudit renders summary and round status", () => withProject((root) => {
@@ -295,11 +323,14 @@ check("formatAudit renders summary and round status", () => withProject((root) =
   assert.match(text, /status: pass/);
 }));
 
-check("evidence CLI rejects missing flag values and unexpected arguments", () => {
-  let capture = captureIo();
+check("evidence CLI rejects missing project value", () => {
+  const capture = captureIo();
   assert.equal(evidenceMain(["audit", "--project"], capture.io), 2);
   assert.match(capture.read().stderr, /--project requires/);
-  capture = captureIo();
+});
+
+check("evidence CLI rejects unexpected arguments", () => {
+  const capture = captureIo();
   assert.equal(evidenceMain(["audit", "wat"], capture.io), 2);
   assert.match(capture.read().stderr, /unexpected argument/);
 });
