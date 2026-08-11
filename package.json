@@ -9,6 +9,7 @@
     "node": ">=22"
   },
   "scripts": {
+    "doctor": "node scripts/doctor.mjs",
     "test": "node test/doctor.mjs && node test/self-test.mjs"
   }
 }
