@@ -90,6 +90,20 @@ check("valid browser-control v2 package passes without HAR", () => withProject((
   assert.equal(report.status, "pass");
 }));
 
+check("declared missing video permits absence but warns on contradictory artifact", () => withProject((root) => {
+  const rd = buildRound(root, ROUND1, { backend: "browser-control" });
+  const meta = JSON.parse(fs.readFileSync(path.join(rd, "meta.json"), "utf8"));
+  meta.completeness.video = "missing";
+  writeJson(path.join(rd, "meta.json"), meta);
+  fs.rmSync(path.join(rd, "video.webm"));
+  let report = auditLibrary({ projectRoot: root });
+  assert.notEqual(report.status, "fail");
+  fs.writeFileSync(path.join(rd, "video.webm"), Buffer.alloc(16, 7));
+  report = auditLibrary({ projectRoot: root });
+  assert.equal(report.status, "warn");
+  assert.match(JSON.stringify(report), /video.*missing|missing.*video/i);
+}));
+
 check("symlinked evidence root is refused", () => {
   if (process.platform === "win32") return;
   withProject((root) => {
