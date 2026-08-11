@@ -3,6 +3,7 @@
 
 import assert from "node:assert/strict";
 import { runDoctor, formatDoctor, aggregateStatus } from "../lib/diagnostics.mjs";
+import { main as doctorMain } from "../scripts/doctor.mjs";
 
 let passed = 0;
 function check(name, fn) {
@@ -22,6 +23,18 @@ function result(status, stdout = "", stderr = "") {
 
 function fakeExec(entries) {
   return ({ bin, args }) => entries[[bin, ...args].join(" ")] ?? result(null);
+}
+
+function captureIo() {
+  let stdout = "";
+  let stderr = "";
+  return {
+    io: {
+      stdout: { write: (value) => { stdout += String(value); } },
+      stderr: { write: (value) => { stderr += String(value); } },
+    },
+    read: () => ({ stdout, stderr }),
+  };
 }
 
 const healthyAgentBrowser = {
@@ -123,6 +136,18 @@ check("formatDoctor renders stable human-readable status lines", () => {
   assert.match(text, /PASS\s+node\s+Node 24\.5\.0/);
   assert.match(text, /WARN\s+ffmpeg/);
   assert.match(text, /status: warn/);
+});
+
+check("doctor CLI rejects a missing backend value", () => {
+  const capture = captureIo();
+  assert.equal(doctorMain(["--backend"], capture.io), 2);
+  assert.match(capture.read().stderr, /--backend requires/);
+});
+
+check("doctor CLI rejects positional arguments", () => {
+  const capture = captureIo();
+  assert.equal(doctorMain(["agent-browser"], capture.io), 2);
+  assert.match(capture.read().stderr, /unexpected argument/);
 });
 
 console.log(`doctor tests: ${passed} passed`);
