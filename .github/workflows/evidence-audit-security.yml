@@ -1,0 +1,25 @@
+name: evidence-audit-security
+
+on:
+  pull_request:
+    paths:
+      - "lib/evidence-audit.mjs"
+      - "test/evidence-audit-security.mjs"
+      - "test/mutate-evidence-audit-security.mjs"
+      - ".github/workflows/evidence-audit-security.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - run: node test/evidence-audit-security.mjs
+      - run: node test/mutate-evidence-audit-security.mjs
