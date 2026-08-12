@@ -200,6 +200,71 @@ and `pending` puts that comment back on the queue.
 
 Do not edit `comments.json`, `resolutions.json`, `.active.json`, or partial packages directly.
 
+## Auto-Enhance Loop
+
+After any `round stop`, the auto-enhance pipeline analyses the evidence and surfaces
+actionable findings — without requiring operator video review first. It reads
+`dom.json`, `network.har`, and `meta.json` and categorises findings by severity
+(`critical` / `warn` / `info`) across four domains: accessibility, performance, network, UX.
+
+### Three-step workflow
+
+**Step 1 — Analyse** (runs the analyzers, writes `enhance.json`):
+
+```bash
+node "$AR_SKILL_DIR/scripts/enhance.mjs" analyze --round <roundId>
+```
+
+Or integrate with `stop` in one command:
+
+```bash
+node "$AR_SKILL_DIR/scripts/round.mjs" stop --summary "…" --auto-enhance
+```
+
+**Step 2 — Suggest** (renders human-readable `suggestions.md` with patch guidance):
+
+```bash
+node "$AR_SKILL_DIR/scripts/enhance.mjs" suggest --round <roundId>
+```
+
+**Step 3 — Apply** (logs patchable findings to `applied.json`; agent applies actual code changes):
+
+```bash
+node "$AR_SKILL_DIR/scripts/enhance.mjs" apply --round <roundId> --auto
+```
+
+`--auto` is required to write `applied.json` — without it, the command only prints the
+patch list for review. `apply` **never edits source files directly**; it records intent
+so the agent can make guided, reversible changes.
+
+### What gets analysed
+
+| Channel | Checks |
+|---|---|
+| `dom.json` | Fetch errors, interactive elements without label evidence, redacted field count, segment completeness, content-disappears pattern |
+| `network.har` | Requests >1 s (critical if >3 s), 4xx / 5xx errors, large responses (>500 KB) without Cache-Control |
+| `meta.json` | Missing / partial video or DOM evidence, evidence gaps, low sync confidence |
+| Timeline | DOM mutation bursts (≥5 in 500 ms), long waits between actions (>5 s), mid-round navigations |
+
+### Output files (all gitignored inside `.agent-review/`)
+
+| File | Written by |
+|---|---|
+| `enhance.json` | `enhance analyze` |
+| `suggestions.md` | `enhance suggest` |
+| `applied.json` | `enhance apply --auto` |
+
+### Rules
+
+- `enhance apply` **never touches source files** — it only writes `applied.json` as an
+  intent record. The agent reads this file and makes the actual edits.
+- All three output files land inside `.agent-review/<roundId>/` which is already
+  gitignored. Never commit them.
+- Address **critical** findings before committing. **Warn** findings should be reviewed
+  per iteration. **Info** findings are advisory.
+- After applying fixes, record a new round and run `enhance analyze` again to verify.
+- `--auto-enhance` on `round stop` is opt-in — omit it to skip auto-analyze.
+
 ## Coverage audits (DOM dynamics monitoring)
 
 The same recorder powers a second workflow: a maintained `coverage.json` inventory of views ×

@@ -1603,6 +1603,7 @@ function cmdRunBc({ root, dir, st, adapter, before, cmd }) {
 
 function cmdStop(args) {
   const summary = (getFlag(args, "--summary") || "").replace(/\s*\n\s*/g, " ").trim().slice(0, 160);
+  const autoEnhance = args.includes("--auto-enhance");
   const root = findProjectRoot();
   const dir = arDir(root, { create: false });
   const st = dir ? loadActive(dir) : null;
@@ -1957,6 +1958,23 @@ function cmdStop(args) {
   console.log(`round recorded: ${st.roundId}${bc ? " (browser-control)" : ""}${sessionLeaked ? " — session release failed, run 'round.mjs abort'" : ""}`);
   console.log(`sync: ${confidence} (${method}, clock skew ${clockSkewMs == null ? "n/a" : clockSkewMs + "ms"})`);
   console.log(`review: node "${path.join(SKILL_DIR, "scripts", "server.mjs")}" open --project "$PWD"`);
+
+  // ---- auto-enhance: run analyze immediately after stop if requested ----
+  if (autoEnhance) {
+    console.log(`\nauto-enhance: running analyze on ${st.roundId}…`);
+    const enhanceCli = path.join(SKILL_DIR, "scripts", "enhance.mjs");
+    const enh = spawnSync(process.execPath, [enhanceCli, "analyze", "--round", st.roundId], {
+      encoding: "utf8",
+      stdio: "inherit",
+    });
+    if (enh.status !== 0) {
+      process.stderr.write(`round: enhance analyze exited with ${enh.status} — run it manually:\n`);
+      process.stderr.write(`  node "${enhanceCli}" analyze --round ${st.roundId}\n`);
+    } else {
+      console.log(`auto-enhance: done. Run suggest next:`);
+      console.log(`  node "${enhanceCli}" suggest --round ${st.roundId}`);
+    }
+  }
 }
 
 function cmdAbort() {
@@ -2346,7 +2364,7 @@ function main() {
     case "resolve": return cmdResolve(rest);
     case "calibrate": return cmdCalibrate(rest);
     default:
-      die(`usage: round.mjs <start|run|stop|abort|pending|resolve|calibrate>`, 2);
+      die(`usage: round.mjs <start|run|stop|abort|pending|resolve|calibrate>\n       stop accepts --auto-enhance to run enhance analyze automatically`, 2);
   }
 }
 

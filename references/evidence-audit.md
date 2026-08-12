@@ -63,3 +63,18 @@ The audit understands the currently documented package split:
 - schema v2 `meta.json`: browser-control evidence, `versions.backend` is `browser-control`, network completeness is `missing`, and `network.har` is absent
 
 The other package JSON files remain schema version 1 in both cases.
+
+## Downstream: Auto-Enhance
+
+After a structural audit passes, consider running the auto-enhance pipeline to extract
+actionable signals from the evidence without waiting for operator comments:
+
+```bash
+node "$AR_SKILL_DIR/scripts/enhance.mjs" analyze --round <roundId>
+node "$AR_SKILL_DIR/scripts/enhance.mjs" suggest --round <roundId>
+```
+
+`enhance analyze` reads `dom.json`, `network.har`, and `meta.json` from the same package
+and produces `enhance.json` (structured findings) and, on `suggest`, `suggestions.md`
+(human-readable with patch guidance). Output lands in the same round directory and is
+gitignored. See `SKILL.md` → "Auto-Enhance Loop" for the full workflow.
